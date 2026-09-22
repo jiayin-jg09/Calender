@@ -22,6 +22,7 @@
   --r:16px;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;min-height:100%}
 body{
   color:var(--ink);
@@ -219,6 +220,28 @@ body.snap .blk,body.snap .col{cursor:default}
 body.snap .exitsnap{display:inline-block}
 
 .hint{color:var(--ink3);font-size:12.5px;margin:13px 2px 0}
+.acct{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--rule);
+  background:var(--glass-2);color:var(--ink);padding:4px 13px 4px 5px;border-radius:999px;
+  cursor:pointer;font-weight:600;font-size:13px;min-height:34px;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.acct:hover{background:rgba(255,255,255,.09)}
+.acct:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.acct.out{padding:6px 14px}
+.acct .av{width:25px;height:25px;border-radius:50%;background:var(--focus);color:#1A1630;
+  display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12.5px}
+.acct .av:empty{display:none}
+.acct .dot[hidden]{display:none}
+.sheet h4{margin:20px 0 4px;font-size:14.5px;font-weight:600}
+.sheet textarea{width:100%;border:1px solid var(--rule);background:rgba(0,0,0,.3);
+  border-radius:9px;padding:9px 10px;color:var(--ink);resize:vertical;
+  font:12px/1.5 ui-monospace,Menlo,Consolas,monospace}
+.setup{margin-top:18px;border-top:1px solid var(--rule);padding-top:14px}
+.setup summary{cursor:pointer;font-weight:600;font-size:14.5px;margin-bottom:12px}
+.btn.mini{padding:3px 10px;font-size:12px;border-radius:7px}
+.bk{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--rule-soft);font-size:13px}
+.bk span{flex:1;color:var(--ink2);line-height:1.4}
+.bk b{color:var(--ink);font-weight:600}
+.bk small{color:var(--ink3);font-size:11.5px}
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);
   background:rgba(240,240,246,.96);color:#15171D;padding:10px 18px;border-radius:10px;
   font-size:13.5px;z-index:60;font-weight:600;box-shadow:0 8px 30px rgba(0,0,0,.5)}
@@ -253,7 +276,7 @@ body.snap .exitsnap{display:inline-block}
       <button id="tabMonth" aria-pressed="false">Month</button>
       <button id="tabWeek" aria-pressed="true">Week</button>
     </div>
-    <button class="btn" id="btnSync">Sync</button>
+    <button class="acct out" id="btnAcct"><span class="av" id="acctAv"></span><span class="dot" id="acctChipDot" hidden></span><span id="acctLabel">Sign in</span></button>
     <button class="btn" id="btnSnap">Snapshot</button>
   </div>
 
@@ -339,34 +362,57 @@ body.snap .exitsnap{display:inline-block}
   </div>
 </div>
 
-<div class="sheet" id="syncSheet" hidden role="dialog" aria-label="Google sync">
-  <h3>Sync with Google</h3>
-  <p class="sub">Your schedule is saved to a private folder in your own Google Drive, so it follows you between your laptop and your phone. Nobody else can see it, and it never touches anyone else's server.</p>
-  <p class="status"><span class="dot" id="syncDot"></span><span id="syncMsg">Not set up yet.</span></p>
+<div class="sheet" id="acctSheet" hidden role="dialog" aria-label="Account">
+  <h3>Your account</h3>
+  <p class="status"><span class="dot" id="acctDot"></span><span id="acctMsg"></span></p>
+  <p class="status" id="envLine" hidden><span class="dot err"></span><span id="envMsg"></span></p>
 
-  <div id="setupBlock">
+  <div class="actions" id="acctOutActions" hidden>
+    <button class="btn solid" id="btnSignIn" style="flex:1">Sign in with Google</button>
+  </div>
+  <div class="actions" id="acctInActions" hidden>
+    <button class="btn danger" id="btnSignOut">Sign out on this device</button>
+  </div>
+
+  <h4>Earlier versions</h4>
+  <p class="sub" style="margin-bottom:6px">This device keeps a copy of your schedule each day, and before anything big happens to it. Restoring one also updates your account.</p>
+  <div id="backupList"></div>
+
+  <details class="setup" id="setupBox">
+    <summary>Setup</summary>
     <ol class="steps">
-      <li>Open <code>console.cloud.google.com</code> and make a project.</li>
-      <li>Under <b>APIs &amp; Services</b>, enable the <b>Google Drive API</b>.</li>
-      <li>Fill in the <b>OAuth consent screen</b> (External, just your own email as a test user is fine).</li>
-      <li>Under <b>Credentials</b>, create an <b>OAuth client ID</b> of type <b>Web application</b>.</li>
-      <li>Add your site to <b>Authorized JavaScript origins</b>, e.g. <code>https://yourname.github.io</code></li>
-      <li>Copy the client ID and paste it below.</li>
+      <li>Go to <code>console.firebase.google.com</code> and create a project. You can pick the Google Cloud project you already made. Analytics can stay off.</li>
+      <li><b>Build &rarr; Authentication &rarr; Get started &rarr; Sign-in method</b>, turn on <b>Google</b>, and save.</li>
+      <li><b>Authentication &rarr; Settings &rarr; Authorized domains</b>, add this site's domain:
+        <code id="domainVal"></code> <button class="btn mini" id="copyDomain">Copy</button></li>
+      <li><b>Build &rarr; Firestore Database &rarr; Create database</b>. Choose production mode and a location near you.</li>
+      <li>In Firestore, open <b>Rules</b>, replace everything with these rules, and click <b>Publish</b>.
+        <button class="btn mini" id="copyRules">Copy rules</button></li>
+      <li>Click the gear &rarr; <b>Project settings</b> &rarr; <b>Your apps</b> &rarr; the <b>&lt;/&gt;</b> web icon. Register the app (skip Hosting), then copy the <code>firebaseConfig</code> block and paste it here:</li>
     </ol>
-    <div class="frow">
-      <input type="text" id="clientId" placeholder="000000-xxxx.apps.googleusercontent.com">
-      <button class="btn solid" id="saveClient">Save</button>
+    <textarea id="cfgInput" rows="6" spellcheck="false" placeholder="const firebaseConfig = {&#10;  apiKey: &quot;&hellip;&quot;,&#10;  authDomain: &quot;&hellip;&quot;,&#10;  &hellip;&#10;};"></textarea>
+    <div class="actions">
+      <button class="btn solid" id="cfgSave" style="flex:1">Save config</button>
+      <button class="btn" id="cfgDownload">Download file with it built in</button>
     </div>
-  </div>
+    <p class="sub" style="margin-top:10px">A pasted config only lives on this device. Download the built-in copy and upload it to GitHub in place of your current file, and every device will be ready to sign in with no pasting.</p>
+  </details>
 
   <div class="actions">
-    <button class="btn solid" id="gSignIn" style="flex:1">Sign in with Google</button>
-    <button class="btn" id="gSyncNow" hidden>Sync now</button>
-    <button class="btn danger" id="gSignOut" hidden>Sign out</button>
+    <button class="btn" id="acctClose" style="flex:1">Close</button>
   </div>
+</div>
+
+<div class="sheet" id="conflictSheet" hidden role="dialog" aria-label="Choose a version">
+  <h3>Which version should this device use?</h3>
+  <p class="sub" id="conflictMsg"></p>
   <div class="actions">
-    <button class="btn" id="syncClose" style="flex:1">Close</button>
+    <button class="btn solid" id="cfCloud" style="flex:1">Use my account&rsquo;s version</button>
   </div>
+  <div class="actions" style="margin-top:8px">
+    <button class="btn" id="cfMerge" style="flex:1">Keep this device&rsquo;s blocks too</button>
+  </div>
+  <p class="sub" style="margin:14px 0 0">Either way, this device's current version is saved under Earlier versions, so nothing is lost.</p>
 </div>
 
 <button class="btn solid exitsnap" id="exitSnap">Back to editing</button>
@@ -375,6 +421,13 @@ body.snap .exitsnap{display:inline-block}
 <script>
 (function(){
 "use strict";
+
+/* ▼▼▼  FIREBASE CONFIG  ▼▼▼
+   Paste your firebaseConfig object in place of null on the line below, keeping the
+   comment at the end of it. It's safe for this to be public: access is protected by your Firestore rules.
+   Or use "Download file with it built in" from the account panel. */
+var FIREBASE_CONFIG = null; // @@CONFIG@@
+/* ▲▲▲ */
 
 var COLORS = {
   sky:    {l:'#CFE1F8', lf:'#20507E', d:'#334A6B', df:'#CFE1F8'},
@@ -401,7 +454,7 @@ var MONTHS = ['January','February','March','April','May','June','July',
               'August','September','October','November','December'];
 var MSHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var SNAP = 15, HOURPX = 54;
-var KEY = 'schedule.v3', CIDKEY = 'schedule.clientid', SIGNEDKEY = 'schedule.signedin';
+var KEY = 'schedule.v3';
 
 function colorOf(ev){
   var k = ev.color || (CATS[ev.cat]||CATS.other).color;
@@ -412,7 +465,7 @@ function fgOf(ev){ return colorOf(ev).df; }
 
 var state = {title:'Internship schedule', who:'', events:{}, h0:7, h1:19, weeks:1, updatedAt:0};
 var view='week', cursor=startOfWeek(new Date()), mCursor=new Date();
-var editing=null, readOnly=false, clipboard=null;
+var editing=null, readOnly=false, clipboard=null, viewingShared=false;
 
 function pad(n){ return n<10?'0'+n:''+n; }
 function key(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
@@ -432,10 +485,21 @@ function payload(){
   return {title:state.title,who:state.who,events:state.events,
           h0:state.h0,h1:state.h1,weeks:state.weeks,updatedAt:state.updatedAt};
 }
-function save(touch){
-  if(touch!==false) state.updatedAt = Date.now();
+function saveLocal(){
+  if(viewingShared) return;
   try{ localStorage.setItem(KEY, JSON.stringify(payload())); }catch(e){}
-  schedulePush();
+}
+function save(){
+  if(viewingShared) return;
+  saveLocal();
+  markDirty();
+}
+function refreshAll(){
+  var t=document.getElementById('title');
+  if(document.activeElement!==t) t.value=state.title;
+  if(drag) return;
+  if(view==='week') renderWeek(); else renderMonth();
+  renderSnapInfo();
 }
 function load(){ try{ var r=localStorage.getItem(KEY); if(r) merge(JSON.parse(r)); }catch(e){} }
 function merge(o){
@@ -642,6 +706,7 @@ function snapMin(m){ return Math.round(m/SNAP)*SNAP; }
 
 weeksEl.addEventListener('pointerdown',function(e){
   if(readOnly) return;
+  if(e.target.closest('.blk,.col') && !e.target.closest('.daycopy') && locked()) return;
   if(e.target.closest('.daycopy')) return;
   var blk=e.target.closest('.blk'), col=e.target.closest('.col');
   if(!col) return;
@@ -722,7 +787,7 @@ weeksEl.addEventListener('pointercancel',endDrag);
 
 weeksEl.addEventListener('keydown',function(e){
   var blk=e.target.closest&&e.target.closest('.blk');
-  if(!blk||readOnly) return;
+  if(!blk||readOnly||sync.hydrating) return;
   var k=blk.closest('.col').dataset.date, ev=find(k,blk.dataset.id); if(!ev) return;
   if(e.key==='Backspace'||e.key==='Delete'){ remove(k,ev.id); renderWeek(); renderSnapInfo();
     e.preventDefault(); return; }
@@ -739,6 +804,7 @@ weeksEl.addEventListener('keydown',function(e){
 weeksEl.addEventListener('click',function(e){
   var c=e.target.closest('.daycopy');
   if(c && !readOnly){
+    if(locked()) return;
     var src=listFor(parseKey(c.dataset.copy));
     if(!src.length){ toast('That day is empty'); return; }
     clipboard=src.map(clone);
@@ -746,7 +812,7 @@ weeksEl.addEventListener('click',function(e){
     armDays(); e.stopPropagation(); return;
   }
   var h=e.target.closest('.dhead');
-  if(h && clipboard && h.dataset.day && !readOnly){
+  if(h && clipboard && h.dataset.day && !readOnly && !sync.hydrating){
     state.events[h.dataset.day]=clipboard.map(clone);
     save(); clipboard=null; renderWeek(); renderSnapInfo(); toast('Pasted');
   }
@@ -759,7 +825,6 @@ function armDays(){
 
 /* ---- editor ---- */
 var sheet=document.getElementById('sheet'), scrim=document.getElementById('scrim');
-var syncSheet=document.getElementById('syncSheet');
 var edStart=document.getElementById('edStart'), edEnd=document.getElementById('edEnd');
 var edLabel=document.getElementById('edLabel'), edCats=document.getElementById('edCats');
 var edColors=document.getElementById('edColors');
@@ -803,7 +868,7 @@ function openEditor(k,id){
   paintEditor(ev);
   sheet.hidden=false; scrim.hidden=false;
 }
-function closeAll(){ editing=null; sheet.hidden=true; syncSheet.hidden=true; scrim.hidden=true; }
+function closeAll(){ if(conflictOpen) return; editing=null; sheet.hidden=true; acctSheet.hidden=true; scrim.hidden=true; }
 function refresh(){ if(view==='week') renderWeek(); else renderMonth(); renderSnapInfo(); }
 
 function applyEdit(){
@@ -844,7 +909,7 @@ document.getElementById('edDelete').addEventListener('click',function(){
 scrim.addEventListener('click',closeAll);
 document.addEventListener('keydown',function(e){
   if(e.key!=='Escape') return;
-  if(!sheet.hidden||!syncSheet.hidden) closeAll();
+  if(!sheet.hidden||!acctSheet.hidden) closeAll();
   else if(clipboard){ clipboard=null; armDays(); }
 });
 
@@ -888,6 +953,7 @@ document.getElementById('selEnd').addEventListener('change',function(){
   document.getElementById('selStart').value=state.h0; save(); renderWeek(); });
 
 document.getElementById('btnRepeat').addEventListener('click',function(){
+  if(locked()) return;
   var n=parseInt(prompt('Copy the weeks shown forward how many times?','4'),10);
   if(!n||n<1) return;
   n=Math.min(n,26);
@@ -901,6 +967,7 @@ document.getElementById('btnRepeat').addEventListener('click',function(){
   toast('Copied forward '+n+' time'+(n>1?'s':''));
 });
 document.getElementById('btnClear').addEventListener('click',function(){
+  if(locked()) return;
   if(!confirm('Remove every block in the weeks shown?')) return;
   shownDays().forEach(function(d){ delete state.events[key(d)]; });
   save(); renderWeek(); renderSnapInfo();
@@ -916,6 +983,7 @@ document.getElementById('btnSnap').addEventListener('click',function(){
   render(); showShare(); window.scrollTo(0,0);
 });
 document.getElementById('exitSnap').addEventListener('click',function(){
+  if(viewingShared){ location.href=location.pathname+location.search; return; }
   document.body.classList.remove('snap'); readOnly=false;
   var b=document.getElementById('sharebox'); if(b) b.remove();
   render();
@@ -1068,169 +1136,519 @@ function exportPNG(cb){
 }
 
 /* =========================================================
-   GOOGLE DRIVE SYNC
-   Signs in with Google and keeps one private file in your own
-   Drive's hidden app folder. Needs an https origin, so it works
-   once hosted (GitHub Pages), not from a file:// page.
+   ACCOUNT & SYNC
+   Google sign-in through Firebase, with each day stored as its
+   own record. Only days you actually change are ever written,
+   so one device can never wipe out another device's work.
    ========================================================= */
-var SCOPES='https://www.googleapis.com/auth/drive.appdata openid email';
-var clientId = (function(){ try{ return localStorage.getItem(CIDKEY)||''; }catch(e){ return ''; } })();
-var tokenClient=null, gToken=null, gEmail='', driveFileId=null, gisReady=false, gisFailed=false;
-var pushTimer=null, syncing=false;
+var FB_VERSION='12.18.0';
+var CFGKEY='schedule.fbconfig', SYNCKEY='schedule.sync', BACKKEY='schedule.backups';
+var RULES=[
+  "rules_version = '2';",
+  "service cloud.firestore {",
+  "  match /databases/{database}/documents {",
+  "    match /users/{uid}/{document=**} {",
+  "      allow read, write: if request.auth != null && request.auth.uid == uid;",
+  "    }",
+  "  }",
+  "}"].join('\n');
 
-var syncDot=document.getElementById('syncDot'), syncMsg=document.getElementById('syncMsg');
-var setupBlock=document.getElementById('setupBlock');
-var gSignIn=document.getElementById('gSignIn'), gSignOut=document.getElementById('gSignOut');
-var gSyncNow=document.getElementById('gSyncNow');
+var sync={cfg:null, ready:false, loadFailed:false, A:null, F:null, app:null, auth:null, db:null,
+  user:null, uid:null, lastSynced:{}, pending:{}, sent:{}, lastSettings:'',
+  inflight:0, error:'', hydrating:false, hydrateTimer:null, needMerge:false,
+  unsubDays:null, unsubSet:null, pushTimer:null};
+var conflictOpen=false;
 
-function setStatus(msg,cls){
-  syncMsg.textContent=msg;
-  syncDot.className='dot'+(cls?' '+cls:'');
+/* ---- clean, comparable data ---- */
+function cleanEv(e){
+  var o={id:String(e.id), s:+e.s, e:+e.e, cat:String(e.cat||'other'), label:String(e.label||'')};
+  if(e.color) o.color=String(e.color);
+  return o;
 }
-function paintSync(){
-  document.getElementById('clientId').value=clientId;
-  setupBlock.hidden = !!clientId && !!gToken;
-  gSignIn.hidden = !!gToken;
-  gSignOut.hidden = !gToken;
-  gSyncNow.hidden = !gToken;
-  if(!clientId) setStatus('Not set up yet. Follow the steps below.','');
-  else if(gisFailed) setStatus('Google\u2019s sign-in script can\u2019t load here. This works once the page is hosted on your own site.','err');
-  else if(!gisReady) setStatus('Loading Google\u2026','warn');
-  else if(!gToken) setStatus('Ready. Sign in to start syncing.','warn');
-  else setStatus('Syncing as '+(gEmail||'your Google account')+'.','on');
+function cleanDay(a){ return (Array.isArray(a)?a:[]).map(cleanEv); }
+function dayJSON(a){ return (a&&a.length) ? JSON.stringify(cleanDay(a)) : null; }
+function settingsJSON(){ return JSON.stringify({title:String(state.title||''), who:String(state.who||'')}); }
+function countBlocks(ev){ var n=0; for(var k in ev) n+=(ev[k]||[]).length; return n; }
+
+/* ---- per-device sync memory ---- */
+function persistSync(){
+  if(!sync.uid) return;
+  try{ localStorage.setItem(SYNCKEY, JSON.stringify({uid:sync.uid, lastSynced:sync.lastSynced,
+    pending:sync.pending, lastSettings:sync.lastSettings})); }catch(e){}
 }
-function loadGIS(){
-  if(!clientId || gisReady || document.getElementById('gisScript')) return;
-  var s=document.createElement('script');
-  s.id='gisScript'; s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
-  s.onload=function(){
-    try{
-      tokenClient=google.accounts.oauth2.initTokenClient({
-        client_id:clientId, scope:SCOPES,
-        callback:function(resp){
-          if(resp && resp.access_token){
-            gToken=resp.access_token;
-            try{ localStorage.setItem(SIGNEDKEY,'1'); }catch(e){}
-            fetchEmail().then(firstSync);
-          } else { setStatus('Sign-in was cancelled.','warn'); }
-        }
-      });
-      gisReady=true; paintSync();
-      var was=false; try{ was=localStorage.getItem(SIGNEDKEY)==='1'; }catch(e){}
-      if(was) tokenClient.requestAccessToken({prompt:''});
-    }catch(e){ gisFailed=true; paintSync(); }
-  };
-  s.onerror=function(){ gisFailed=true; paintSync(); };
-  document.head.appendChild(s);
+function initSyncMeta(){
+  try{
+    var m=JSON.parse(localStorage.getItem(SYNCKEY)||'null');
+    if(m && m.uid){
+      sync.uid=m.uid; sync.lastSynced=m.lastSynced||{}; sync.pending=m.pending||{};
+      sync.lastSettings=m.lastSettings||'';
+    }
+  }catch(e){}
 }
-function gFetch(url,opts){
-  opts=opts||{};
-  opts.headers=Object.assign({Authorization:'Bearer '+gToken},opts.headers||{});
-  return fetch(url,opts).then(function(r){
-    if(r.status===401){ gToken=null; paintSync(); throw new Error('expired'); }
-    return r;
-  });
-}
-function fetchEmail(){
-  return gFetch('https://www.googleapis.com/oauth2/v3/userinfo')
-    .then(function(r){ return r.json(); })
-    .then(function(j){ gEmail=j.email||''; })
-    .catch(function(){});
-}
-function findFile(){
-  var q=encodeURIComponent("name='schedule.json'");
-  return gFetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q='+q+
-                '&fields=files(id)')
-    .then(function(r){ return r.json(); })
-    .then(function(j){ return (j.files&&j.files[0])? j.files[0].id : null; });
-}
-function readRemote(id){
-  return gFetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media')
-    .then(function(r){ return r.json(); });
-}
-function writeRemote(){
-  var body=JSON.stringify(payload());
-  if(driveFileId){
-    return gFetch('https://www.googleapis.com/upload/drive/v3/files/'+driveFileId+'?uploadType=media',
-      {method:'PATCH',headers:{'Content-Type':'application/json'},body:body});
+
+/* Called on every local save: note which days now differ from the account. */
+function markDirty(){
+  if(!sync.uid) return;
+  var keys={}, k;
+  for(k in state.events) keys[k]=1;
+  for(k in sync.lastSynced) keys[k]=1;
+  for(k in keys){
+    if(dayJSON(state.events[k]) !== (sync.lastSynced[k]||null)) sync.pending[k]=1;
   }
-  var meta={name:'schedule.json',parents:['appDataFolder']};
-  var b='sched'+Date.now();
-  var multipart='--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+
-    JSON.stringify(meta)+'\r\n--'+b+'\r\nContent-Type: application/json\r\n\r\n'+
-    body+'\r\n--'+b+'--';
-  return gFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-    {method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body:multipart})
-    .then(function(r){ return r.json(); })
-    .then(function(j){ driveFileId=j.id; });
-}
-function firstSync(){
-  if(!gToken) return;
-  syncing=true; setStatus('Checking Drive\u2026','warn');
-  findFile().then(function(id){
-    driveFileId=id;
-    if(!id) return writeRemote().then(function(){ setStatus('Saved to Drive.','on'); });
-    return readRemote(id).then(function(remote){
-      if(remote && (remote.updatedAt||0) > (state.updatedAt||0)){
-        merge(remote);
-        document.getElementById('title').value=state.title;
-        document.getElementById('selStart').value=state.h0;
-        document.getElementById('selEnd').value=state.h1;
-        document.querySelectorAll('[data-wk]').forEach(function(x){
-          x.setAttribute('aria-pressed',+x.dataset.wk===state.weeks); });
-        try{ localStorage.setItem(KEY,JSON.stringify(payload())); }catch(e){}
-        render(); toast('Loaded the newer copy from Drive');
-      } else if((state.updatedAt||0) > (remote&&remote.updatedAt||0)){
-        return writeRemote();
-      }
-    });
-  }).then(function(){
-    syncing=false; paintSync();
-  }).catch(function(){
-    syncing=false;
-    setStatus('Couldn\u2019t reach Drive. Try signing in again.','err');
-  });
+  if(settingsJSON()!==sync.lastSettings) sync.pending.__settings=1;
+  persistSync();
+  schedulePush();
+  paintAcct();
 }
 function schedulePush(){
-  if(!gToken||syncing) return;
-  clearTimeout(pushTimer);
-  pushTimer=setTimeout(function(){
-    writeRemote().then(function(){ setStatus('Saved to Drive \u00b7 '+
-      new Date().toLocaleTimeString(),'on'); })
-      .catch(function(){ setStatus('Not saved to Drive \u2014 sign in again.','err'); });
-  },1800);
+  clearTimeout(sync.pushTimer);
+  sync.pushTimer=setTimeout(pushChanges,600);
+}
+function pushChanges(){
+  if(!sync.user || !sync.db || sync.hydrating || viewingShared) return;
+  var F=sync.F, uid=sync.user.uid;
+  Object.keys(sync.pending).forEach(function(k){
+    if(k==='__settings'){
+      var sj=settingsJSON();
+      if(('__settings' in sync.sent) && sync.sent.__settings===sj) return;
+      sync.sent.__settings=sj; sync.lastSettings=sj;
+      track(F.setDoc(F.doc(sync.db,'users',uid,'meta','settings'), JSON.parse(sj), {merge:true}), k, sj);
+      return;
+    }
+    var cur=dayJSON(state.events[k]);
+    if((k in sync.sent) && sync.sent[k]===cur) return;
+    sync.sent[k]=cur;
+    var ref=F.doc(sync.db,'users',uid,'days',k);
+    if(cur===null){
+      delete sync.lastSynced[k];
+      track(F.deleteDoc(ref), k, null);
+    } else {
+      sync.lastSynced[k]=cur;
+      track(F.setDoc(ref, {events:JSON.parse(cur), updatedAt:F.serverTimestamp()}), k, cur);
+    }
+  });
+  persistSync();
+}
+function track(p,k,val){
+  sync.inflight++; paintAcct();
+  p.then(function(){
+    var now = k==='__settings' ? settingsJSON() : dayJSON(state.events[k]);
+    if(now===val) delete sync.pending[k];
+    if(sync.sent[k]===val) delete sync.sent[k];
+    sync.error='';
+    persistSync();
+  }).catch(function(err){
+    delete sync.sent[k];
+    sync.error=friendly(err);
+  }).then(function(){ sync.inflight--; paintAcct(); });
 }
 
-document.getElementById('btnSync').addEventListener('click',function(){
-  paintSync(); syncSheet.hidden=false; scrim.hidden=false; loadGIS();
+/* ---- incoming changes from other devices ---- */
+function onDays(snap){
+  if(viewingShared) return;
+  sync.error='';
+  if(sync.hydrating){
+    if(snap.metadata.fromCache && snap.empty) return;   // wait for the real thing
+    var cloud={};
+    snap.forEach(function(d){ var a=cleanDay(d.data().events); if(a.length) cloud[d.id]=a; });
+    var next={}, k;
+    for(k in cloud) next[k]=cloud[k];
+    Object.keys(sync.pending).forEach(function(p){
+      if(p==='__settings') return;
+      if(state.events[p]&&state.events[p].length) next[p]=state.events[p]; else delete next[p];
+    });
+    state.events=next;
+    sync.lastSynced={};
+    for(k in cloud) sync.lastSynced[k]=dayJSON(cloud[k]);
+    saveLocal(); persistSync(); endHydrate(); refreshAll();
+    return;
+  }
+  var changed=false;
+  snap.docChanges().forEach(function(ch){
+    if(ch.doc.metadata.hasPendingWrites) return;
+    var k=ch.doc.id;
+    if(sync.pending[k]) return;                         // your newer edit here wins
+    if(ch.type==='removed'){
+      if(state.events[k]){ delete state.events[k]; changed=true; }
+      delete sync.lastSynced[k]; return;
+    }
+    var a=cleanDay(ch.doc.data().events), j=dayJSON(a);
+    if(j){ if(dayJSON(state.events[k])!==j){ state.events[k]=a; changed=true; } sync.lastSynced[k]=j; }
+    else { if(state.events[k]){ delete state.events[k]; changed=true; } delete sync.lastSynced[k]; }
+  });
+  persistSync();
+  if(changed){ saveLocal(); refreshAll(); }
+  paintAcct();
+}
+function onSettings(d){
+  if(viewingShared || sync.pending.__settings || d.metadata.hasPendingWrites || !d.exists()) return;
+  var s=d.data(), o={title:String(s.title||''), who:String(s.who||'')};
+  sync.lastSettings=JSON.stringify(o);
+  if((o.title && o.title!==state.title) || o.who!==state.who){
+    if(o.title) state.title=o.title;
+    state.who=o.who; saveLocal(); refreshAll();
+  }
+  persistSync();
+}
+function onSyncError(err){ sync.error=friendly(err); endHydrate(); paintAcct(); }
+
+function attach(hydrate){
+  detach();
+  sync.hydrating=!!hydrate;
+  if(hydrate){ clearTimeout(sync.hydrateTimer); sync.hydrateTimer=setTimeout(endHydrate,8000); }
+  var F=sync.F, uid=sync.user.uid;
+  sync.unsubDays=F.onSnapshot(F.collection(sync.db,'users',uid,'days'), onDays, onSyncError);
+  sync.unsubSet=F.onSnapshot(F.doc(sync.db,'users',uid,'meta','settings'), onSettings, onSyncError);
+  paintAcct();
+}
+function detach(){
+  if(sync.unsubDays){ sync.unsubDays(); sync.unsubDays=null; }
+  if(sync.unsubSet){ sync.unsubSet(); sync.unsubSet=null; }
+}
+function endHydrate(){
+  if(!sync.hydrating) return;
+  sync.hydrating=false; clearTimeout(sync.hydrateTimer);
+  paintAcct(); pushChanges();
+}
+function locked(){
+  if(sync.hydrating){ toast('One sec \u2014 loading your latest schedule'); return true; }
+  return false;
+}
+
+/* ---- first sign-in on a device ---- */
+function firstMerge(){
+  var F=sync.F, uid=sync.user.uid, cloud={}, cs=null;
+  sync.hydrating=true; sync.needMerge=false; paintAcct();
+  makeBackup('Before signing in on this device');
+  Promise.all([
+    F.getDocsFromServer(F.collection(sync.db,'users',uid,'days')),
+    F.getDocFromServer(F.doc(sync.db,'users',uid,'meta','settings'))
+  ]).then(function(r){
+    r[0].forEach(function(d){ var a=cleanDay(d.data().events); if(a.length) cloud[d.id]=a; });
+    cs = r[1].exists() ? r[1].data() : null;
+    if(!Object.keys(cloud).length) return 'local';
+    var extra=0;
+    Object.keys(state.events).forEach(function(k){
+      var have={};
+      (cloud[k]||[]).forEach(function(e){ have[e.id]=JSON.stringify(e); });
+      cleanDay(state.events[k]).forEach(function(e){ if(have[e.id]!==JSON.stringify(e)) extra++; });
+    });
+    if(!extra) return 'cloud';
+    return askConflict(extra);
+  }).then(function(choice){
+    var k;
+    sync.uid=uid; sync.pending={}; sync.sent={}; sync.lastSynced={};
+    for(k in cloud) sync.lastSynced[k]=dayJSON(cloud[k]);
+    sync.lastSettings = cs ? JSON.stringify({title:String(cs.title||''), who:String(cs.who||'')}) : '';
+
+    if(choice==='cloud'){
+      var fresh={}; for(k in cloud) fresh[k]=cloud[k].slice();
+      state.events=fresh;
+      if(cs){ if(cs.title) state.title=String(cs.title); state.who=String(cs.who||''); }
+    } else if(choice==='merge'){
+      var next={}; for(k in cloud) next[k]=cloud[k].slice();
+      for(k in state.events){
+        var at={}; (next[k]||[]).forEach(function(e,i){ at[e.id]=i; });
+        cleanDay(state.events[k]).forEach(function(e){
+          if(e.id in at) next[k][at[e.id]]=e;
+          else { if(!next[k]) next[k]=[]; next[k].push(e); }
+        });
+      }
+      state.events=next;
+    }
+    saveLocal();
+    var keys={};
+    for(k in state.events) keys[k]=1;
+    for(k in sync.lastSynced) keys[k]=1;
+    for(k in keys) if(dayJSON(state.events[k])!==(sync.lastSynced[k]||null)) sync.pending[k]=1;
+    if(settingsJSON()!==sync.lastSettings) sync.pending.__settings=1;
+    persistSync();
+    sync.hydrating=false;
+    attach(false);
+    pushChanges(); refreshAll(); paintAcct();
+    toast(choice==='local' ? 'Signed in \u2014 your schedule is saved to your account'
+        : choice==='cloud' ? 'Signed in \u2014 loaded your schedule'
+        : 'Signed in \u2014 both versions combined');
+  }).catch(function(err){
+    sync.hydrating=false; sync.needMerge=true;
+    sync.error=friendly(err); paintAcct();
+  });
+}
+function askConflict(n){
+  return new Promise(function(resolve){
+    editing=null; sheet.hidden=true; acctSheet.hidden=true;
+    document.getElementById('conflictMsg').textContent =
+      'Your account already has a schedule, and this device has '+n+' block'+(n===1?'':'s')+
+      ' that '+(n===1?'differs':'differ')+' from it \u2014 usually an older copy from before you signed in. '+
+      'If you did your real planning on another device, use your account\u2019s version.';
+    conflictSheet.hidden=false; scrim.hidden=false; conflictOpen=true;
+    function done(c){ conflictOpen=false; conflictSheet.hidden=true; scrim.hidden=true; resolve(c); }
+    document.getElementById('cfCloud').onclick=function(){ done('cloud'); };
+    document.getElementById('cfMerge').onclick=function(){ done('merge'); };
+  });
+}
+
+/* ---- sign in / out ---- */
+function onUser(user){
+  if(!user){ sync.user=null; detach(); endHydrate(); paintAcct(); return; }
+  sync.user=user; sync.error='';
+  if(sync.uid===user.uid) attach(true);
+  else firstMerge();
+  paintAcct();
+}
+function signIn(){
+  if(!sync.cfg){ openAcct(); return; }
+  if(!sync.ready){ toast(sync.loadFailed ? 'Sign-in couldn\u2019t load here' : 'Still loading \u2014 try again in a second'); return; }
+  var A=sync.A, p=new A.GoogleAuthProvider();
+  p.setCustomParameters({prompt:'select_account'});
+  A.signInWithPopup(sync.auth,p).catch(function(err){
+    var c=err&&err.code;
+    if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request') return;
+    if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment')
+      return A.signInWithRedirect(sync.auth,p);
+    sync.error=friendly(err); paintAcct(); openAcct();
+  });
+}
+function doSignOut(){
+  var waiting=Object.keys(sync.pending).length;
+  var msg = waiting
+    ? 'Some changes are still saving. Sign out anyway? Anything unsaved stays on this device.'
+    : 'Sign out on this device? Your schedule stays here, and it\u2019s safe in your account.';
+  if(!confirm(msg)) return;
+  detach();
+  sync.A.signOut(sync.auth).then(function(){
+    try{ localStorage.removeItem(SYNCKEY); }catch(e){}
+    sync.uid=null; sync.pending={}; sync.sent={}; sync.lastSynced={}; sync.lastSettings='';
+    paintAcct();
+  });
+}
+
+/* ---- loading Firebase ---- */
+function readLocalCfg(){ try{ return JSON.parse(localStorage.getItem(CFGKEY)||'null'); }catch(e){ return null; } }
+function parseConfig(txt){
+  var o={};
+  ['apiKey','authDomain','projectId','storageBucket','messagingSenderId','appId'].forEach(function(k){
+    var m=new RegExp(k+'["\']?\\s*:\\s*["\']([^"\']+)["\']').exec(txt);
+    if(m) o[k]=m[1];
+  });
+  return (o.apiKey&&o.authDomain&&o.projectId&&o.appId) ? o : null;
+}
+function bootSync(){
+  sync.cfg = FIREBASE_CONFIG || readLocalCfg();
+  if(!sync.cfg || viewingShared){ paintAcct(); return; }
+  if(sync.uid && navigator.onLine && !envProblem()){
+    sync.hydrating=true;
+    sync.hydrateTimer=setTimeout(endHydrate,8000);
+  }
+  if(envProblem()){ sync.loadFailed=true; endHydrate(); paintAcct(); return; }
+  var base='https://www.gstatic.com/firebasejs/'+FB_VERSION+'/';
+  Promise.all([import(base+'firebase-app.js'), import(base+'firebase-auth.js'),
+               import(base+'firebase-firestore.js')])
+  .then(function(m){
+    var App=m[0], A=m[1], F=m[2];
+    sync.A=A; sync.F=F;
+    sync.app=App.initializeApp(sync.cfg);
+    sync.auth=A.getAuth(sync.app);
+    try{
+      sync.db=F.initializeFirestore(sync.app,{
+        localCache:F.persistentLocalCache({tabManager:F.persistentMultipleTabManager()}),
+        ignoreUndefinedProperties:true});
+    }catch(e){ sync.db=F.getFirestore(sync.app); }
+    sync.ready=true;
+    A.getRedirectResult(sync.auth).catch(function(err){ sync.error=friendly(err); paintAcct(); });
+    A.onAuthStateChanged(sync.auth, onUser);
+    paintAcct();
+  }).catch(function(){
+    sync.loadFailed=true; endHydrate(); paintAcct();
+  });
+}
+window.addEventListener('online',function(){
+  if(sync.user && sync.needMerge) firstMerge();
+  else pushChanges();
+  paintAcct();
 });
-document.getElementById('syncClose').addEventListener('click',closeAll);
-document.getElementById('saveClient').addEventListener('click',function(){
-  clientId=document.getElementById('clientId').value.trim();
-  try{ localStorage.setItem(CIDKEY,clientId); }catch(e){}
-  gisReady=false; gisFailed=false;
-  var old=document.getElementById('gisScript'); if(old) old.remove();
-  paintSync(); loadGIS(); toast('Client ID saved');
+window.addEventListener('offline',paintAcct);
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden'){ clearTimeout(sync.pushTimer); pushChanges(); }
 });
-gSignIn.addEventListener('click',function(){
-  if(!clientId){ toast('Add your Google client ID first'); return; }
-  if(!tokenClient){ loadGIS(); toast('Still loading Google \u2014 try again in a second'); return; }
-  tokenClient.requestAccessToken({prompt:'consent'});
+
+/* ---- backups on this device ---- */
+function readBackups(){ try{ return JSON.parse(localStorage.getItem(BACKKEY)||'[]'); }catch(e){ return []; } }
+function makeBackup(label){
+  if(viewingShared) return;
+  var n=countBlocks(state.events); if(!n) return;
+  var list=readBackups(), snap=JSON.stringify(state.events);
+  if(list[0] && list[0].events===snap) return;
+  list.unshift({at:Date.now(), label:label, n:n, events:snap, title:state.title, who:state.who});
+  list=list.slice(0,8);
+  while(list.length){
+    try{ localStorage.setItem(BACKKEY,JSON.stringify(list)); break; }catch(e){ list.pop(); }
+  }
+}
+function dailyBackup(){
+  var l=readBackups();
+  if(!l[0] || Date.now()-l[0].at > 20*3600*1000) makeBackup('Daily copy');
+}
+function whenStr(t){
+  var d=new Date(t);
+  return DAYS[(d.getDay()+6)%7]+' '+MSHORT[d.getMonth()]+' '+d.getDate()+', '+fmtTime(d.getHours()*60+d.getMinutes());
+}
+function renderBackups(){
+  var l=readBackups(), el=document.getElementById('backupList');
+  if(!l.length){ el.innerHTML='<p class="sub" style="margin:0">None yet.</p>'; return; }
+  el.innerHTML=l.map(function(b,i){
+    return '<div class="bk"><span><b>'+esc(whenStr(b.at))+'</b> &middot; '+b.n+' block'+(b.n===1?'':'s')+
+      '<br><small>'+esc(b.label)+'</small></span><button class="btn mini" data-restore="'+i+'">Restore</button></div>';
+  }).join('');
+}
+function restoreBackup(i){
+  var b=readBackups()[i]; if(!b) return;
+  if(!confirm('Replace your schedule with the version from '+whenStr(b.at)+'?')) return;
+  makeBackup('Before restoring');
+  state.events=JSON.parse(b.events);
+  if(b.title) state.title=b.title;
+  if(typeof b.who==='string') state.who=b.who;
+  save(); refreshAll(); renderBackups(); toast('Restored');
+}
+
+/* ---- errors in plain words ---- */
+function friendly(err){
+  var c=(err&&err.code)||'', m=(err&&err.message)||String(err||''), host=location.hostname;
+  var map={
+    'auth/unauthorized-domain':'Firebase doesn\u2019t recognise this site yet. Add '+host+
+      ' under Authentication \u2192 Settings \u2192 Authorized domains.',
+    'auth/operation-not-allowed':'Google sign-in is switched off. Turn it on under Authentication \u2192 Sign-in method \u2192 Google.',
+    'auth/configuration-not-found':'Authentication isn\u2019t set up yet. Open Authentication in Firebase, click Get started, then turn on Google.',
+    'auth/popup-blocked':'Your browser blocked the sign-in window. Allow popups for this site and try again.',
+    'auth/network-request-failed':'Couldn\u2019t reach Google. Check your connection.',
+    'auth/invalid-api-key':'The Firebase config looks wrong. Copy it again from Project settings.',
+    'permission-denied':'Your account\u2019s database refused access. Copy the rules from Setup into Firestore \u2192 Rules and click Publish.',
+    'unavailable':'Can\u2019t reach your account right now. Changes are safe on this device and will sync when you\u2019re back online.',
+    'failed-precondition':'The database isn\u2019t ready. Make sure it\u2019s created under Build \u2192 Firestore Database.',
+    'not-found':'The database doesn\u2019t exist yet. Create it under Build \u2192 Firestore Database.'
+  };
+  if(map[c]) return map[c];
+  if(/database.*does not exist/i.test(m)) return map['not-found'];
+  if(/api.?key/i.test(c+' '+m)) return map['auth/invalid-api-key'];
+  return 'Something went wrong ('+(c||m)+').';
+}
+function envProblem(){
+  var framed=false;
+  try{ framed = window.top!==window.self; }catch(e){ framed=true; }
+  if(framed) return 'This copy is running inside another site, which blocks Google sign-in. Open your GitHub Pages address instead.';
+  if(location.protocol==='file:') return 'You opened the file straight from your computer. Sign-in needs your GitHub Pages address.';
+  if(location.protocol!=='https:' && location.hostname!=='localhost') return 'Sign-in needs an https:// address.';
+  return '';
+}
+
+/* ---- account chip + panel ---- */
+var acctSheet=document.getElementById('acctSheet'), conflictSheet=document.getElementById('conflictSheet');
+function acctState(){
+  if(!sync.cfg)        return {label:'Sign in', dot:'', me:false};
+  if(sync.loadFailed)  return {label:'Sign in', dot:'err', me:false};
+  if(!sync.ready)      return {label:'Loading\u2026', dot:'warn', me:false};
+  if(!sync.user)       return {label:'Sign in with Google', dot:'', me:false};
+  if(sync.hydrating)   return {label:'Loading\u2026', dot:'warn', me:true};
+  if(sync.error)       return {label:'Sync issue', dot:'err', me:true};
+  if(!navigator.onLine)return {label:'Offline', dot:'warn', me:true};
+  if(sync.inflight>0 || Object.keys(sync.pending).length) return {label:'Saving\u2026', dot:'warn', me:true};
+  return {label:'Synced', dot:'on', me:true};
+}
+function paintAcct(){
+  var chip=document.getElementById('btnAcct');
+  if(!chip) return;
+  chip.hidden=viewingShared;
+  var st=acctState();
+  var av=document.getElementById('acctAv'), cd=document.getElementById('acctChipDot');
+  av.textContent = st.me && sync.user ? ((sync.user.displayName||sync.user.email||'?').trim().charAt(0).toUpperCase()) : '';
+  cd.className='dot'+(st.dot?' '+st.dot:''); cd.hidden=!st.dot;
+  document.getElementById('acctLabel').textContent=st.label;
+  chip.classList.toggle('out',!st.me);
+
+  if(acctSheet.hidden) return;
+  var msg;
+  if(!sync.cfg) msg='Sign-in isn\u2019t set up yet. Open Setup below \u2014 it\u2019s a one-time thing.';
+  else if(sync.loadFailed) msg=envProblem()||'Couldn\u2019t load Google sign-in. Check your connection and reload.';
+  else if(!sync.ready) msg='Loading\u2026';
+  else if(!sync.user) msg=sync.error || 'Sign in once and your schedule follows you to every device. You\u2019ll stay signed in.';
+  else {
+    var who='Signed in as '+(sync.user.email||'your Google account')+'. ';
+    msg = st.label==='Synced' ? who+'Everything\u2019s saved to your account.'
+        : st.label==='Saving\u2026' ? who+'Saving your latest changes\u2026'
+        : st.label==='Offline' ? who+'You\u2019re offline. Changes are kept here and will sync when you\u2019re back.'
+        : st.label==='Loading\u2026' ? who+'Loading your schedule\u2026'
+        : who+sync.error;
+  }
+  document.getElementById('acctMsg').textContent=msg;
+  document.getElementById('acctDot').className='dot'+(st.dot?' '+st.dot:'');
+  var env=envProblem();
+  document.getElementById('envLine').hidden=!env || sync.loadFailed;
+  document.getElementById('envMsg').textContent=env;
+  document.getElementById('acctOutActions').hidden = !(sync.cfg && sync.ready && !sync.user);
+  document.getElementById('acctInActions').hidden = !sync.user;
+  document.getElementById('domainVal').textContent=location.hostname||'(your-site.github.io)';
+  if(!sync.cfg) document.getElementById('setupBox').open=true;
+  renderBackups();
+}
+function openAcct(){
+  editing=null; sheet.hidden=true;
+  acctSheet.hidden=false; scrim.hidden=false;
+  var c=sync.cfg;
+  document.getElementById('cfgInput').value = c ? 'const firebaseConfig = '+JSON.stringify(c,null,2)+';' : '';
+  paintAcct();
+}
+function copyText(v,label){
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(v).then(function(){ toast(label+' copied'); },
+      function(){ prompt('Copy this:',v); });
+  else prompt('Copy this:',v);
+}
+function downloadWithConfig(){
+  var cfg=sync.cfg;
+  if(!cfg){ toast('Save your config first'); return; }
+  fetch(location.href.split('#')[0],{cache:'no-store'}).then(function(r){ return r.text(); })
+  .then(function(src){
+    var marker=new RegExp('var FIREBASE_CONFIG = [^\\n]*// @@'+'CONFIG@@');
+    if(!marker.test(src)) throw new Error('marker');
+    var out=src.replace(marker,function(){
+      return 'var FIREBASE_CONFIG = '+JSON.stringify(cfg)+'; // @@'+'CONFIG@@'; });
+    var url=URL.createObjectURL(new Blob([out],{type:'text/html'}));
+    anchorSave('index.html',url);
+    setTimeout(function(){ URL.revokeObjectURL(url); },4000);
+    toast('Downloaded \u2014 upload it to GitHub as index.html');
+  }).catch(function(){
+    toast('Couldn\u2019t build it here \u2014 open this page from your GitHub address and try again');
+  });
+}
+
+document.getElementById('btnAcct').addEventListener('click',function(){
+  if(sync.cfg && sync.ready && !sync.user && !sync.error) signIn();
+  else openAcct();
 });
-gSignOut.addEventListener('click',function(){
-  if(gToken && window.google && google.accounts && google.accounts.oauth2)
-    try{ google.accounts.oauth2.revoke(gToken); }catch(e){}
-  gToken=null; gEmail=''; driveFileId=null;
-  try{ localStorage.removeItem(SIGNEDKEY); }catch(e){}
-  paintSync();
+document.getElementById('btnSignIn').addEventListener('click',signIn);
+document.getElementById('btnSignOut').addEventListener('click',doSignOut);
+document.getElementById('acctClose').addEventListener('click',closeAll);
+document.getElementById('copyDomain').addEventListener('click',function(){ copyText(location.hostname,'Domain'); });
+document.getElementById('copyRules').addEventListener('click',function(){ copyText(RULES,'Rules'); });
+document.getElementById('cfgSave').addEventListener('click',function(){
+  var c=parseConfig(document.getElementById('cfgInput').value);
+  if(!c){ toast('That doesn\u2019t look like a firebaseConfig block'); return; }
+  try{ localStorage.setItem(CFGKEY,JSON.stringify(c)); }catch(e){}
+  toast('Saved \u2014 reloading');
+  setTimeout(function(){ location.reload(); },700);
 });
-gSyncNow.addEventListener('click',firstSync);
+document.getElementById('cfgDownload').addEventListener('click',downloadWithConfig);
+document.getElementById('backupList').addEventListener('click',function(e){
+  var b=e.target.closest('[data-restore]'); if(b) restoreBackup(+b.dataset.restore);
+});
 
 /* ---- boot ---- */
+try{ localStorage.removeItem('schedule.clientid'); localStorage.removeItem('schedule.signedin'); }catch(e){}
 load();
 if(location.hash.indexOf('#s=')===0){
   var shared=decode(location.hash.slice(3));
   if(shared){
+    viewingShared=true;
     merge(shared);
     if(shared.from) cursor=startOfWeek(parseKey(shared.from));
     document.body.classList.add('snap'); readOnly=true;
@@ -1242,9 +1660,14 @@ document.getElementById('selEnd').value=state.h1;
 document.querySelectorAll('[data-wk]').forEach(function(b){
   b.setAttribute('aria-pressed',+b.dataset.wk===state.weeks); });
 render();
-if(readOnly) document.getElementById('exitSnap').textContent='Edit my own copy';
-paintSync();
-if(clientId) loadGIS();
+if(viewingShared){
+  document.getElementById('exitSnap').textContent='Open my own schedule';
+} else {
+  dailyBackup();
+  initSyncMeta();
+  bootSync();
+}
+paintAcct();
 })();
 </script>
 </body>
